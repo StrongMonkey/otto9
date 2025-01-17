@@ -85,6 +85,7 @@ func (in *WorkflowExecution) DeleteRefs() []Ref {
 	return []Ref{
 		{ObjType: &Workflow{}, Name: in.Spec.WorkflowName},
 		{ObjType: &Thread{}, Name: in.Status.ThreadName},
+		{ObjType: &CronJob{}, Name: in.Spec.CronJobName},
 	}
 }
 

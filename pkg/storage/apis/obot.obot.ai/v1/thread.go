@@ -77,7 +77,6 @@ func (in *Thread) DeleteRefs() []Ref {
 	refs := []Ref{
 		{ObjType: &WorkflowExecution{}, Name: in.Spec.WorkflowExecutionName},
 		{ObjType: &Workflow{}, Name: in.Spec.WorkflowName},
-		{ObjType: &CronJob{}, Name: in.Spec.CronJobName},
 		{ObjType: &Webhook{}, Name: in.Spec.WebhookName},
 		{ObjType: &EmailReceiver{}, Name: in.Spec.EmailReceiverName},
 		{ObjType: &Thread{}, Name: in.Status.PreviousThreadName},
