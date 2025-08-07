@@ -217,14 +217,10 @@
 						{selectedCategory}
 						disablePortal
 						onConnectServer={(connectedServer) => {
-							if (connectedServer.server?.configured) {
-								setupProjectMcp(connectedServer);
-							}
+							setupProjectMcp(connectedServer);
 						}}
 						onConnectedServerCardClick={(connectedServer) => {
-							if (connectedServer.server?.configured) {
-								setupProjectMcp(connectedServer);
-							}
+							setupProjectMcp(connectedServer);
 						}}
 						onDisconnect={() => {
 							loadData(true);

@@ -73,6 +73,8 @@ func configurationHasDrifted(needsURL bool, serverManifest types.MCPServerManife
 		if err != nil {
 			return drifted, err
 		}
+	case types.RuntimeVirtual:
+		return false, nil
 
 	default:
 		return false, fmt.Errorf("unknown runtime type: %s", serverManifest.Runtime)

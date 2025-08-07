@@ -37,6 +37,12 @@
 	import BackLink from '$lib/components/admin/BackLink.svelte';
 	import Search from '$lib/components/Search.svelte';
 	import { formatTimeAgo } from '$lib/time';
+	import { initProjectMCPs } from '$lib/context/projectMcps.svelte';
+
+	let { data } = $props();
+	let { mcpServers } = data;
+
+	initProjectMCPs(mcpServers || []);
 
 	const defaultCatalogId = DEFAULT_MCP_CATALOG_ID;
 	let search = $state('');
@@ -47,6 +53,12 @@
 	onMount(async () => {
 		await fetchMcpServerAndEntries(defaultCatalogId, mcpServerAndEntries, (entries, servers) => {
 			const serverId = new URL(window.location.href).searchParams.get('id');
+			const createNewType = new URL(window.location.href).searchParams.get('new') as
+				| 'single'
+				| 'multi'
+				| 'remote'
+				| 'virtual';
+
 			if (serverId) {
 				const foundEntry = entries.find((e) => e.id === serverId);
 				const foundServer = servers.find((s) => s.id === serverId);
@@ -59,6 +71,9 @@
 					selectedEntryServer = undefined;
 					showServerForm = false;
 				}
+			} else if (createNewType) {
+				selectedServerType = createNewType;
+				showServerForm = true;
 			} else {
 				selectedEntryServer = undefined;
 				showServerForm = false;
@@ -88,6 +103,15 @@
 		return entries
 			.filter((entry) => !entry.deleted)
 			.map((entry) => {
+				let type: string;
+				if (entry.manifest.projectID) {
+					type = 'virtual';
+				} else if (entry.manifest.runtime === 'remote') {
+					type = 'remote';
+				} else {
+					type = 'single';
+				}
+
 				return {
 					id: entry.id,
 					name: entry.manifest?.name ?? '',
@@ -96,8 +120,8 @@
 					data: entry,
 					users: entry.userCount ?? 0,
 					editable: !entry.sourceURL,
-					type: entry.manifest.runtime === 'remote' ? 'remote' : 'single',
-					created: entry.created
+					created: entry.created,
+					type
 				};
 			});
 	}
@@ -152,8 +176,9 @@
 	let editingSource = $state<{ index: number; value: string }>();
 	let sourceDialog = $state<HTMLDialogElement>();
 	let selectServerTypeDialog = $state<ReturnType<typeof ResponsiveDialog>>();
-	let selectedServerType = $state<'single' | 'multi' | 'remote'>();
+	let selectedServerType = $state<'single' | 'multi' | 'remote' | 'virtual'>();
 	let selectedEntryServer = $state<MCPCatalogEntry | MCPCatalogServer>();
+	let createdProjectId = $state<string>();
 
 	let syncError = $state<{ url: string; error: string }>();
 	let syncErrorDialog = $state<ReturnType<typeof ResponsiveDialog>>();
@@ -165,13 +190,51 @@
 	let saving = $state(false);
 	let refreshing = $state(false);
 	let sourceError = $state<string>();
-	function selectServerType(type: 'single' | 'multi' | 'remote', updateUrl = true) {
+	async function selectServerType(
+		type: 'single' | 'multi' | 'remote' | 'virtual',
+		updateUrl = true
+	) {
 		selectedServerType = type;
 		selectServerTypeDialog?.close();
-		showServerForm = true;
-		if (updateUrl) {
-			goto(`/admin/mcp-servers?new=${type}`, { replaceState: false });
+
+		// For virtual servers, create a project first
+		if (type === 'virtual') {
+			try {
+				const { ChatService } = await import('$lib/services');
+				const assistants = (await ChatService.listAssistants()).items;
+				let defaultAssistant = assistants.find((a) => a.default);
+				if (!defaultAssistant && assistants.length == 1) {
+					defaultAssistant = assistants[0];
+				}
+				if (!defaultAssistant) {
+					throw new Error('Failed to find default assistant');
+				}
+
+				// Create a temporary project for the virtual server
+				const project = await ChatService.createProject(defaultAssistant.id, {
+					name: 'Virtual MCP Server',
+					description: 'Temporary project for virtual MCP server configuration'
+				});
+
+				// Store the project ID in state and URL
+				createdProjectId = project.id;
+				if (updateUrl) {
+					goto(`/admin/mcp-servers?new=${type}&projectId=${project.id}`, { replaceState: false });
+				}
+			} catch (error) {
+				console.error('Failed to create project for virtual server:', error);
+				// Fall back to normal flow if project creation fails
+				if (updateUrl) {
+					goto(`/admin/mcp-servers?new=${type}`, { replaceState: false });
+				}
+			}
+		} else {
+			if (updateUrl) {
+				goto(`/admin/mcp-servers?new=${type}`, { replaceState: false });
+			}
 		}
+
+		showServerForm = true;
 	}
 
 	function closeSourceDialog() {
@@ -252,7 +315,7 @@
 					data={filteredTableData}
 					fields={['name', 'type', 'users', 'source', 'created']}
 					onSelectRow={(d) => {
-						if (d.type === 'single' || d.type === 'remote') {
+						if (d.type === 'single' || d.type === 'remote' || d.type === 'virtual') {
 							goto(`/admin/mcp-servers/c/${d.id}`);
 						} else {
 							goto(`/admin/mcp-servers/s/${d.id}`);
@@ -278,7 +341,13 @@
 								</p>
 							</div>
 						{:else if property === 'type'}
-							{d.type === 'single' ? 'Single User' : d.type === 'multi' ? 'Multi-User' : 'Remote'}
+							{d.type === 'single'
+								? 'Single User'
+								: d.type === 'multi'
+									? 'Multi-User'
+									: d.type === 'virtual'
+										? 'Virtual'
+										: 'Remote'}
 						{:else if property === 'source'}
 							{d.source === 'manual'
 								? 'Web Console'
@@ -383,18 +452,22 @@
 			? 'Single User'
 			: selectedServerType === 'multi'
 				? 'Multi-User'
-				: 'Remote'}
+				: selectedServerType === 'virtual'
+					? 'Virtual'
+					: 'Remote'}
+	{console.log('createdProjectId', createdProjectId)}
 	<div class="flex flex-col gap-6" in:fly={{ x: 100, delay: duration, duration }}>
 		<BackLink fromURL="mcp-servers" currentLabel={`Create ${currentLabelType} Server`} />
 		<McpServerEntryForm
 			type={selectedServerType}
 			catalogId={defaultCatalogId}
+			projectId={createdProjectId}
 			onCancel={() => {
 				selectedEntryServer = undefined;
 				showServerForm = false;
 			}}
 			onSubmit={async (id, type) => {
-				if (type === 'single' || type === 'remote') {
+				if (type === 'single' || type === 'remote' || type === 'virtual') {
 					goto(`/admin/mcp-servers/c/${id}`);
 				} else {
 					goto(`/admin/mcp-servers/s/${id}`);
@@ -603,6 +676,21 @@
 					This option is appropriate for allowing users to connect to MCP servers that are already
 					elsewhere. When a user selects this server, their connection to the remote MCP server will
 					go through the Obot gateway.
+				</span>
+			</div>
+		</button>
+		<button
+			class="group dark:bg-surface2 hover:bg-surface1 dark:hover:bg-surface3 dark:border-surface3 border-surface2 flex cursor-pointer items-center gap-4 rounded-md border bg-white px-2 py-4 text-left transition-colors duration-300"
+			onclick={() => selectServerType('virtual')}
+		>
+			<Server
+				class="size-12 flex-shrink-0 pl-1 text-gray-500 transition-colors group-hover:text-inherit"
+			/>
+			<div>
+				<p class="mb-1 text-sm font-semibold">Virtual Server</p>
+				<span class="block text-xs leading-4 text-gray-400 dark:text-gray-600">
+					This option allows you to author an MCP Server right from Obot. Leverage AI, knowledge,
+					and even other MCPs servers to build new composite MCP servers.
 				</span>
 			</div>
 		</button>

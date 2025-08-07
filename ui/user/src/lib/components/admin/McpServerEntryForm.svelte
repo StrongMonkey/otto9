@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { AdminService, type MCPFilter, type MCPCatalogServer } from '$lib/services';
+	import {
+		AdminService,
+		ChatService,
+		type MCPFilter,
+		type MCPCatalogServer,
+		type Project
+	} from '$lib/services';
 	import type { AccessControlRule, MCPCatalogEntry, OrgUser } from '$lib/services/admin/types';
 	import { twMerge } from 'tailwind-merge';
 	import McpServerInfo from '../mcp/McpServerInfo.svelte';
@@ -23,8 +29,9 @@
 	import UsageGraphs from './usage/UsageGraphs.svelte';
 	import McpServerInstances from './McpServerInstances.svelte';
 	import McpServerTools from '../mcp/McpServerTools.svelte';
+	import VirtualServerTools from './VirtualServerTools.svelte';
 
-	type MCPType = 'single' | 'multi' | 'remote';
+	type MCPType = 'single' | 'multi' | 'remote' | 'virtual';
 
 	interface Props {
 		catalogId?: string;
@@ -33,9 +40,10 @@
 		readonly?: boolean;
 		onCancel?: () => void;
 		onSubmit?: (id: string, type: MCPType) => void;
+		projectId?: string;
 	}
 
-	let { entry, catalogId, type, readonly, onCancel, onSubmit }: Props = $props();
+	let { entry, catalogId, type, readonly, onCancel, onSubmit, projectId }: Props = $props();
 
 	const tabs = $derived(
 		entry
@@ -55,6 +63,7 @@
 	let listAccessControlRules = $state<Promise<AccessControlRule[]>>();
 	let listFilters = $state<Promise<MCPFilter[]>>();
 	let users = $state<OrgUser[]>([]);
+	let project = $state<Project | undefined>(undefined);
 
 	let deleteServer = $state(false);
 	let deleteResourceFromRule = $state<{
@@ -73,6 +82,23 @@
 			listFilters = AdminService.listMCPFilters();
 		}
 	});
+
+	// Load project for virtual servers
+	$effect(() => {
+		if (type === 'virtual' && projectId) {
+			loadProject();
+		}
+	});
+
+	async function loadProject() {
+		if (!projectId) return;
+
+		try {
+			project = await ChatService.getProject(projectId);
+		} catch (error) {
+			console.error('Failed to load project:', error);
+		}
+	}
 
 	onMount(() => {
 		AdminService.listUsers().then((data) => {
@@ -168,7 +194,13 @@
 				{/if}
 				<h1 class="text-2xl font-semibold capitalize">{entry.manifest.name || 'Unknown'}</h1>
 				<div class="dark:bg-surface2 bg-surface3 rounded-full px-3 py-1 text-xs">
-					{type === 'single' ? 'Single User' : type === 'multi' ? 'Multi-User' : 'Remote'}
+					{type === 'single'
+						? 'Single User'
+						: type === 'multi'
+							? 'Multi-User'
+							: type === 'virtual'
+								? 'Virtual'
+								: 'Remote'}
 				</div>
 			</div>
 			{#if !readonly}
@@ -231,7 +263,11 @@
 			{@render configurationView()}
 		{:else if selected === 'tools' && entry}
 			<div class="pb-8">
-				<McpServerTools {entry} {catalogId} />
+				{#if type === 'virtual' && projectId}
+					<VirtualServerTools {projectId} {project} {readonly} />
+				{:else}
+					<McpServerTools {entry} {catalogId} />
+				{/if}
 			</div>
 		{:else if selected === 'access-control'}
 			{@render accessControlView()}
@@ -240,7 +276,12 @@
 		{:else if selected === 'audit-logs'}
 			{@render auditLogsView()}
 		{:else if selected === 'server-instances'}
-			<McpServerInstances {catalogId} {entry} {users} {type} />
+			<McpServerInstances
+				{catalogId}
+				{entry}
+				{users}
+				type={type as 'single' | 'multi' | 'remote' | undefined}
+			/>
 		{:else if selected === 'filters'}
 			{@render filtersView()}
 		{/if}
@@ -256,6 +297,7 @@
 			{catalogId}
 			{onCancel}
 			{onSubmit}
+			{projectId}
 			hideTitle={Boolean(entry)}
 		>
 			{#snippet readonlyMessage()}

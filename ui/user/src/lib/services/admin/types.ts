@@ -50,6 +50,7 @@ export interface MCPCatalogEntryServerManifest {
 	npxConfig?: NPXRuntimeConfig;
 	containerizedConfig?: ContainerizedRuntimeConfig;
 	remoteConfig?: RemoteCatalogConfigAdmin;
+	projectID?: string;
 }
 
 export interface MCPCatalogEntry {

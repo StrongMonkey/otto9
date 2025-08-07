@@ -16,16 +16,18 @@
 	import { onMount, type Snippet } from 'svelte';
 	import MarkdownInput from './MarkdownInput.svelte';
 	import SelectMcpAccessControlRules from './SelectMcpAccessControlRules.svelte';
+	import VirtualServerConfiguration from './VirtualServerConfiguration.svelte';
 
 	interface Props {
 		catalogId?: string;
 		entry?: MCPCatalogEntry | MCPCatalogServer;
-		type?: 'single' | 'multi' | 'remote';
+		type?: 'single' | 'multi' | 'remote' | 'virtual';
 		readonly?: boolean;
 		onCancel?: () => void;
-		onSubmit?: (id: string, type: 'single' | 'multi' | 'remote') => void;
+		onSubmit?: (id: string, type: 'single' | 'multi' | 'remote' | 'virtual') => void;
 		hideTitle?: boolean;
 		readonlyMessage?: Snippet;
+		projectId?: string;
 	}
 
 	function getType(entry?: MCPCatalogEntry | MCPCatalogServer) {
@@ -35,7 +37,13 @@
 		} else {
 			// For catalog entries, determine type based on runtime
 			const catalogEntry = entry as MCPCatalogEntry;
-			return catalogEntry.manifest.runtime === 'remote' ? 'remote' : 'single';
+			if (catalogEntry.manifest.runtime === 'remote') {
+				return 'remote';
+			} else if (catalogEntry.manifest.runtime === 'virtual') {
+				return 'virtual';
+			} else {
+				return 'single';
+			}
 		}
 	}
 
@@ -47,13 +55,15 @@
 		onCancel,
 		onSubmit,
 		hideTitle,
-		readonlyMessage
+		readonlyMessage,
+		projectId
 	}: Props = $props();
 	let type = $derived(getType(entry) ?? newType);
 
 	let savedEntry = $state<MCPCatalogEntry | MCPCatalogServer>();
 	let selectRulesDialog = $state<ReturnType<typeof SelectMcpAccessControlRules>>();
 	let loading = $state(false);
+	let virtualServerConfig = $state<ReturnType<typeof VirtualServerConfiguration>>();
 
 	function convertToFormData(item?: MCPCatalogEntry | MCPCatalogServer): RuntimeFormData {
 		if (!item) {
@@ -64,8 +74,8 @@
 				description: '',
 				env: [],
 				icon: '',
-				runtime: 'npx' as Runtime,
-				npxConfig: { package: '', args: [] },
+				runtime: type === 'virtual' ? ('virtual' as Runtime) : ('npx' as Runtime),
+				npxConfig: type === 'virtual' ? undefined : { package: '', args: [] },
 				uvxConfig: undefined,
 				containerizedConfig: undefined,
 				remoteConfig: undefined,
@@ -117,6 +127,11 @@
 							}
 						: { url: '', headers: [] };
 					break;
+				case 'virtual':
+					formData.remoteConfig = {
+						fixedURL: `${window.location.protocol}//${window.location.hostname}/virtual/mcp/${projectId}`
+					};
+					break;
 			}
 
 			return formData;
@@ -158,6 +173,9 @@
 					break;
 				case 'remote':
 					formData.remoteConfig = manifest.remoteConfig || { fixedURL: '', headers: [] };
+					break;
+				case 'virtual':
+					// For virtual servers, no additional runtime config is needed
 					break;
 			}
 
@@ -237,6 +255,8 @@
 				// For remote servers (catalog entries), use remoteConfig
 				formData.remoteConfig = { fixedURL: '', headers: [] };
 				break;
+			case 'virtual':
+				break;
 		}
 	}
 
@@ -244,6 +264,9 @@
 	function validateForm(): boolean {
 		// Basic validation - name is required
 		if (!formData.name.trim()) return false;
+
+		// For virtual servers, only name validation is needed
+		if (type === 'virtual') return true;
 
 		// Runtime-specific validation
 		switch (formData.runtime) {
@@ -341,6 +364,12 @@
 					};
 				}
 				break;
+			case 'virtual':
+				manifest.projectID = projectId;
+				manifest.remoteConfig = {
+					fixedURL: `${window.location.protocol}//${window.location.hostname}${window.location.port ? `:${window.location.port}` : ''}/virtual/mcp/${projectId}`
+				};
+				break;
 		}
 
 		return manifest;
@@ -398,6 +427,9 @@
 						headers: baseData.remoteServerConfig.headers || []
 					};
 				}
+				break;
+			case 'virtual':
+				serverManifest.manifest.projectID = projectId;
 				break;
 		}
 
@@ -473,10 +505,16 @@
 			const handleFns = {
 				single: handleEntrySubmit,
 				multi: handleServerSubmit,
-				remote: handleEntrySubmit
+				remote: handleEntrySubmit,
+				virtual: handleEntrySubmit // Virtual servers will use the same entry submit handler for now
 			};
 			const entryResponse = await handleFns[type]?.(catalogId);
 			savedEntry = entryResponse;
+
+			// For virtual servers, save the tools as tasks
+			if (type === 'virtual' && virtualServerConfig) {
+				await virtualServerConfig.saveToolsAsTasks();
+			}
 
 			if (!entry) {
 				await selectRulesDialog?.open();
@@ -497,7 +535,7 @@
 		{#if entry}
 			{formData.name}
 		{:else}
-			Create {type} Server
+			Create {type === 'virtual' ? 'Virtual' : type} Server
 		{/if}
 	</h1>
 {/if}
@@ -586,27 +624,32 @@
 	</div>
 </div>
 
-<!-- Runtime Selection -->
-<RuntimeSelector
-	bind:runtime={formData.runtime}
-	serverType={type}
-	{readonly}
-	onRuntimeChange={handleRuntimeChange}
-/>
+{#if type !== 'virtual'}
+	<!-- Runtime Selection -->
+	<RuntimeSelector
+		bind:runtime={formData.runtime}
+		serverType={type}
+		{readonly}
+		onRuntimeChange={handleRuntimeChange}
+	/>
 
-<!-- Runtime-specific Forms -->
-{#if formData.runtime === 'npx' && formData.npxConfig}
-	<NpxRuntimeForm bind:config={formData.npxConfig} {readonly} />
-{:else if formData.runtime === 'uvx' && formData.uvxConfig}
-	<UvxRuntimeForm bind:config={formData.uvxConfig} {readonly} />
-{:else if formData.runtime === 'containerized' && formData.containerizedConfig}
-	<ContainerizedRuntimeForm bind:config={formData.containerizedConfig} {readonly} />
-{:else if formData.runtime === 'remote' && formData.remoteConfig}
-	<RemoteRuntimeForm bind:config={formData.remoteConfig} {readonly} />
+	<!-- Runtime-specific Forms -->
+	{#if formData.runtime === 'npx' && formData.npxConfig}
+		<NpxRuntimeForm bind:config={formData.npxConfig} {readonly} />
+	{:else if formData.runtime === 'uvx' && formData.uvxConfig}
+		<UvxRuntimeForm bind:config={formData.uvxConfig} {readonly} />
+	{:else if formData.runtime === 'containerized' && formData.containerizedConfig}
+		<ContainerizedRuntimeForm bind:config={formData.containerizedConfig} {readonly} />
+	{:else if formData.runtime === 'remote' && formData.remoteConfig}
+		<RemoteRuntimeForm bind:config={formData.remoteConfig} {readonly} />
+	{/if}
+{:else}
+	<!-- Virtual Server Configuration -->
+	<VirtualServerConfiguration bind:this={virtualServerConfig} {projectId} showTools={true} />
 {/if}
 
 <!-- Environment Variables Section -->
-{#if !readonly || (readonly && formData.env && formData.env.length > 0)}
+{#if type !== 'virtual' && (!readonly || (readonly && formData.env && formData.env.length > 0))}
 	<div
 		class="dark:bg-surface1 dark:border-surface3 flex flex-col gap-4 rounded-lg border border-transparent bg-white p-4 shadow-sm"
 	>

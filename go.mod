@@ -3,6 +3,7 @@ module github.com/obot-platform/obot
 go 1.24.2
 
 replace (
+	github.com/nanobot-ai/nanobot => github.com/StrongMonkey/nanobot v0.0.0-20250807174948-dc824879659c
 	github.com/obot-platform/obot/apiclient => ./apiclient
 	github.com/obot-platform/obot/logger => ./logger
 )
@@ -71,6 +72,8 @@ require (
 	sigs.k8s.io/controller-runtime v0.19.0
 	sigs.k8s.io/yaml v1.4.0
 )
+
+require github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 
 require (
 	atomicgo.dev/cursor v0.2.0 // indirect

@@ -256,6 +256,28 @@ func (t *TaskHandler) ListRunsFromScope(req api.Context) error {
 	return t.listRuns(req, workflow, userThread)
 }
 
+func (t *TaskHandler) GetRunsOutput(req api.Context) error {
+	workflow, userThread, err := t.getTask(req)
+	if err != nil {
+		return err
+	}
+
+	var wfe v1.WorkflowExecution
+	if err := req.Get(&wfe, req.PathValue("run_id")); err != nil {
+		return err
+	}
+
+	threadName := userThread.Name
+	if threadName == "" {
+		threadName = wfe.Spec.ThreadName
+	}
+	if wfe.Spec.ThreadName != threadName && wfe.Spec.WorkflowName != workflow.Name {
+		return types.NewErrHTTP(http.StatusForbidden, "task run does not belong to the user")
+	}
+
+	return req.Write(wfe.Status.Output)
+}
+
 func (t *TaskHandler) listRuns(req api.Context, workflow *v1.Workflow, userThread *v1.Thread) error {
 	selector := kclient.MatchingFields{
 		"spec.workflowName": workflow.Name,

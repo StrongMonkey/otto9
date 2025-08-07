@@ -261,7 +261,7 @@ export interface ToolReferenceList {
 	items: ToolReference[];
 }
 
-export type Runtime = 'npx' | 'uvx' | 'containerized' | 'remote';
+export type Runtime = 'npx' | 'uvx' | 'containerized' | 'remote' | 'virtual';
 
 export interface UVXRuntimeConfig {
 	package: string;

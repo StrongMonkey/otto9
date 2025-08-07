@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/obot-platform/obot/pkg/api/handlers"
@@ -58,6 +59,16 @@ func Router(services *services.Services) (http.Handler, error) {
 	mcpGateway := mcpgateway.NewHandler(services.TokenServer, services.StorageClient, services.MCPLoader, services.WebhookHelper, services.MCPOAuthTokenStorage, services.GatewayClient, services.ServerURL)
 	mcpAuditLogs := mcpgateway.NewAuditLogHandler()
 	serverInstances := handlers.NewServerInstancesHandler(services.AccessControlRuleHelper, services.ServerURL)
+	virtualMCP, err := handlers.NewVirtualMCPServer(services.StorageClient, services.Invoker)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create virtual MCP: %w", err)
+	}
+
+	go func() {
+		if err := virtualMCP.Start(); err != nil {
+			log.Printf("failed to start virtual MCP: %v", err)
+		}
+	}()
 
 	// Version
 	mux.HandleFunc("GET /api/version", version.GetVersion)
@@ -170,6 +181,7 @@ func Router(services *services.Services) (http.Handler, error) {
 	mux.HandleFunc("POST /api/assistants/{assistant_id}/projects/{project_id}/tasks/{id}/run", tasks.RunFromScope)
 	mux.HandleFunc("POST /api/assistants/{assistant_id}/projects/{project_id}/tasks/{id}/runs/{run_id}/steps/{step_id}/run", tasks.RunFromScope)
 	mux.HandleFunc("GET /api/assistants/{assistant_id}/projects/{project_id}/tasks/{id}/runs", tasks.ListRunsFromScope)
+	mux.HandleFunc("GET /api/assistants/{assistant_id}/projects/{project_id}/tasks/{id}/runs/{run_id}/output", tasks.GetRunsOutput)
 	mux.HandleFunc("DELETE /api/assistants/{assistant_id}/projects/{project_id}/tasks/{id}/runs/{run_id}", tasks.DeleteRunFromScope)
 	mux.HandleFunc("GET /api/assistants/{assistant_id}/projects/{project_id}/tasks/{id}/runs/{run_id}", tasks.GetRunFromScope)
 	mux.HandleFunc("POST /api/assistants/{assistant_id}/projects/{project_id}/tasks/{id}/runs/{run_id}/abort", tasks.AbortRunFromScope)

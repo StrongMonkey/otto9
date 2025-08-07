@@ -4,7 +4,7 @@
 
 	interface Props {
 		runtime: Runtime;
-		serverType: 'single' | 'multi' | 'remote';
+		serverType: 'single' | 'multi' | 'remote' | 'virtual';
 		readonly?: boolean;
 		onRuntimeChange?: (runtime: Runtime) => void;
 	}
@@ -14,6 +14,10 @@
 	const runtimeOptions = $derived.by(() => {
 		if (serverType === 'remote') {
 			return [{ id: 'remote', label: 'Remote' }];
+		}
+
+		if (serverType === 'virtual') {
+			return [{ id: 'virtual', label: 'Virtual' }];
 		}
 
 		return [
@@ -31,9 +35,17 @@
 		}
 	});
 
+	// Automatically set virtual runtime for virtual servers
+	$effect(() => {
+		if (serverType === 'virtual' && runtime !== 'virtual') {
+			runtime = 'virtual';
+			onRuntimeChange?.('virtual');
+		}
+	});
+
 	// Validate runtime selection for non-remote servers
 	$effect(() => {
-		if (serverType !== 'remote' && runtime === 'remote') {
+		if (serverType !== 'remote' && serverType !== 'virtual' && runtime === 'remote') {
 			// Default to npx if remote is selected for non-remote server
 			runtime = 'npx';
 			onRuntimeChange?.('npx');
@@ -49,7 +61,7 @@
 
 <div
 	class="dark:bg-surface1 dark:border-surface3 flex flex-col gap-4 rounded-lg border border-transparent bg-white p-4 shadow-sm {serverType ===
-	'remote'
+		'remote' || serverType === 'virtual'
 		? 'hidden'
 		: ''}"
 >

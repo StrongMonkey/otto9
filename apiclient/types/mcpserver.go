@@ -15,6 +15,7 @@ const (
 	RuntimeNPX           Runtime = "npx"
 	RuntimeContainerized Runtime = "containerized"
 	RuntimeRemote        Runtime = "remote"
+	RuntimeVirtual       Runtime = "virtual"
 )
 
 // UVXRuntimeConfig represents configuration for UVX runtime (Python packages via uvx)
@@ -77,6 +78,9 @@ type MCPServerCatalogEntryManifest struct {
 	NPXConfig           *NPXRuntimeConfig           `json:"npxConfig,omitempty"`
 	ContainerizedConfig *ContainerizedRuntimeConfig `json:"containerizedConfig,omitempty"`
 	RemoteConfig        *RemoteCatalogConfig        `json:"remoteConfig,omitempty"`
+
+	// ProjectID means that this MCP server is a low code virtual mcp server that is associated with a project.
+	ProjectID string `json:"projectID,omitempty"`
 
 	Env []MCPEnv `json:"env,omitempty"`
 }
@@ -287,6 +291,11 @@ func MapCatalogEntryToServer(catalogEntry MCPServerCatalogEntryManifest, userURL
 		// Copy headers from catalog entry
 		remoteConfig.Headers = catalogEntry.RemoteConfig.Headers
 		serverManifest.RemoteConfig = remoteConfig
+
+	case RuntimeVirtual:
+		serverManifest.RemoteConfig = &RemoteRuntimeConfig{
+			URL: catalogEntry.RemoteConfig.FixedURL,
+		}
 
 	default:
 		return serverManifest, RuntimeValidationError{

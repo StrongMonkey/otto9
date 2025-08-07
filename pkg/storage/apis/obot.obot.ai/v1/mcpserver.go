@@ -77,6 +77,9 @@ type MCPServerSpec struct {
 	NeedsURL bool `json:"needsURL,omitempty"`
 	// PreviousURL contains the URL of the server before it was updated to match the catalog entry.
 	PreviousURL string `json:"previousURL,omitempty"`
+
+	// ProjectID is the ID of the project that this server is associated with, if there is one.
+	ProjectID string `json:"projectID,omitempty"`
 }
 
 type MCPServerStatus struct {

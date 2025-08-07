@@ -19,12 +19,10 @@
 	import Search from '../Search.svelte';
 	import ResponsiveDialog from '../ResponsiveDialog.svelte';
 	import CatalogConfigureForm from './CatalogConfigureForm.svelte';
-	import CatalogEditAliasForm from './CatalogEditAliasForm.svelte';
 	import DotDotDot from '../DotDotDot.svelte';
 	import Confirm from '../Confirm.svelte';
 	import { twMerge } from 'tailwind-merge';
 	import McpServerInfoAndTools from './McpServerInfoAndTools.svelte';
-	import PageLoading from '../PageLoading.svelte';
 
 	type Entry = MCPCatalogEntry & {
 		categories: string[]; // categories for the entry
@@ -89,18 +87,12 @@
 	let configDialog = $state<ReturnType<typeof ResponsiveDialog>>();
 	let configureForm = $state<LaunchFormData>();
 	let showServerInfo = $state(false);
-	let editingServer = $state<ConnectedServer>();
-	let editAliasDialog = $state<ReturnType<typeof CatalogEditAliasForm>>();
 
 	let selectedEntryOrServer = $state<Entry | ConnectedServer | Server>();
 	let selectedManifest = $derived(getManifest(selectedEntryOrServer));
 	let search = $state('');
 	let saving = $state(false);
 	let error = $state<string>();
-
-	let launching = $state(false);
-	let launchError = $state<string>();
-	let launchProgress = $state<number>(0);
 
 	let deletingInstance = $state<MCPServerInstance>();
 	let deletingServer = $state<MCPCatalogServer>();
@@ -113,11 +105,48 @@
 			])
 		)
 	);
+	let userConfiguredServersMap = $derived(
+		new Map(userConfiguredServers.map((server) => [server.catalogEntryID, server]))
+	);
+
+	// Debug: Log user configured servers
+	$effect(() => {
+		console.log(
+			'User configured servers:',
+			userConfiguredServers.map((s) => ({
+				id: s.id,
+				catalogEntryID: s.catalogEntryID,
+				name: s.manifest?.name
+			}))
+		);
+		console.log('User configured servers map keys:', Array.from(userConfiguredServersMap.keys()));
+	});
 
 	let filteredEntriesData = $derived(
 		entries.filter((item) => {
 			if (item.deleted) {
 				return false;
+			}
+
+			const userConfiguredServer = userConfiguredServersMap.get(item.id);
+			if (userConfiguredServer) {
+				console.log(
+					'Filtering out entry with user configured server:',
+					item.manifest?.name,
+					item.id
+				);
+				return false;
+			}
+
+			// Debug: Log virtual servers
+			if (item.manifest?.projectID) {
+				console.log(
+					'Virtual server found:',
+					item.manifest?.name,
+					item.id,
+					'projectID:',
+					item.manifest?.projectID
+				);
 			}
 
 			if (selectedCategory && !item.categories.includes(selectedCategory)) {
@@ -132,7 +161,6 @@
 			return true;
 		})
 	);
-
 	let filteredServers = $derived(
 		servers.filter((item) => {
 			if (item.deleted) {
@@ -155,14 +183,7 @@
 		})
 	);
 
-	let filteredData = $derived(
-		[...filteredServers, ...filteredEntriesData].sort((a, b) => {
-			if (a.manifest?.name && b.manifest?.name) {
-				return a.manifest.name.localeCompare(b.manifest.name);
-			}
-			return 0;
-		})
-	);
+	let filteredData = $derived([...filteredServers, ...filteredEntriesData]);
 	let connectedServers: ConnectedServer[] = $derived([
 		...userConfiguredServers
 			.filter(
@@ -189,51 +210,17 @@
 			.filter((item) => !selectedCategory || item.server?.categories?.includes(selectedCategory))
 	]);
 	let filteredConnectedServers = $derived(
-		connectedServers
-			.filter((item) => {
-				if (search) {
-					const searchLower = search.toLowerCase();
-					const manifestName = item.server?.manifest.name?.toLowerCase() || '';
-					const alias = item.server?.alias?.toLowerCase() || '';
-					return manifestName.includes(searchLower) || alias.includes(searchLower);
-				}
-				return true;
-			})
-			.sort((a, b) => {
-				if (a.server?.manifest.name && b.server?.manifest.name) {
-					return a.server.manifest.name.localeCompare(b.server.manifest.name);
-				}
-				return 0;
-			})
+		connectedServers.filter((item) => {
+			if (search) {
+				return item.server?.manifest.name?.toLowerCase().includes(search.toLowerCase());
+			}
+			return true;
+		})
 	);
 
 	let page = $state(0);
 	let pageSize = $state(30);
 	let paginatedData = $derived(filteredData.slice(page * pageSize, (page + 1) * pageSize));
-
-	function getUniqueAlias(serverName: string): string | undefined {
-		const existingNames = userConfiguredServers
-			.flatMap((server) => [server.manifest?.name || '', server.alias || ''])
-			.filter(Boolean)
-			.map((name) => name.toLowerCase());
-
-		const nameLower = serverName.toLowerCase();
-
-		// Return undefined if no conflict
-		if (!existingNames.includes(nameLower)) {
-			return undefined;
-		}
-
-		// Generate unique alias with counter
-		let counter = 1;
-		let candidateAlias: string;
-		do {
-			candidateAlias = `${serverName} ${counter}`;
-			counter++;
-		} while (existingNames.includes(candidateAlias.toLowerCase()));
-
-		return candidateAlias;
-	}
 
 	export function reset() {
 		page = 0;
@@ -250,33 +237,11 @@
 			return;
 		}
 
-		launchError = undefined;
-		launchProgress = 0;
-		launching = true;
-
-		let timeout1 = setTimeout(() => {
-			launchProgress = 10;
-		}, 100);
-
-		let timeout2 = setTimeout(() => {
-			launchProgress = 30;
-		}, 3000);
-
-		let timeout3 = setTimeout(() => {
-			launchProgress = 80;
-		}, 10000);
-
 		const url = configureForm?.url || entry.manifest.remoteConfig?.fixedURL;
-		const serverName = entry.manifest.name || '';
-
-		// Generate unique alias if there's a naming conflict
-		const aliasToUse = getUniqueAlias(serverName);
-
 		try {
 			const response = await ChatService.createSingleOrRemoteMcpServer({
 				catalogEntryID: entry.id,
-				manifest: { remoteConfig: { url } },
-				alias: aliasToUse
+				manifest: { remoteConfig: { url } }
 			});
 			const secretValues = convertEnvHeadersToRecord(configureForm?.envs, configureForm?.headers);
 			const configuredResponse = await ChatService.configureSingleOrRemoteMcpServer(
@@ -290,26 +255,9 @@
 				parent: entry
 			} as ConnectedServer;
 
-			const launchResponse = await ChatService.validateSingleOrRemoteMcpServerLaunched(
-				configuredResponse.id
-			);
-			if (!launchResponse.success) {
-				launchError = launchResponse.message;
-			} else {
-				launchProgress = 100;
-				const ref = selectedEntryOrServer;
-				setTimeout(() => {
-					launching = false;
-					launchProgress = 0;
-					onConnectServer?.(ref);
-				}, 1000);
-			}
+			onConnectServer?.(selectedEntryOrServer);
 		} catch (err) {
-			launchError = err instanceof Error ? err.message : 'An unknown error occurred';
-		} finally {
-			clearTimeout(timeout1);
-			clearTimeout(timeout2);
-			clearTimeout(timeout3);
+			error = err instanceof Error ? err.message : 'An unknown error occurred';
 		}
 	}
 
@@ -355,10 +303,6 @@
 		}
 
 		return (item as ConnectedServer).server?.manifest;
-	}
-
-	function isSingleOrRemote(connectedServer: ConnectedServer | undefined) {
-		return connectedServer?.server && !connectedServer.instance;
 	}
 
 	function initConfigureForm(item: Entry) {
@@ -470,23 +414,22 @@
 									}}
 								>
 									{#snippet action()}
-										<div class="flex items-center gap-1">
-											{@render connectedServerCardAction?.(connectedServer)}
+										{#if connectedServerCardAction}
+											{@render connectedServerCardAction(connectedServer)}
+										{:else}
 											<DotDotDot
 												class="icon-button hover:bg-surface1 dark:hover:bg-surface2 size-6 min-h-auto min-w-auto flex-shrink-0 p-1 hover:text-blue-500"
 												{disablePortal}
 												el={container}
 											>
 												<div class="default-dialog flex min-w-48 flex-col p-2">
-													{#if isSingleOrRemote(connectedServer)}
-														{@render editConfigAction(connectedServer)}
-														{@render renameAction(connectedServer)}
+													{#if additConnectedServerCardActions}
+														{@render additConnectedServerCardActions(connectedServer)}
 													{/if}
-													{@render additConnectedServerCardActions?.(connectedServer)}
-													{@render disconnectAction(connectedServer)}
+													{@render appendedDefaultActions(connectedServer)}
 												</div>
 											</DotDotDot>
-										</div>
+										{/if}
 									{/snippet}
 								</McpCard>
 							{/if}
@@ -552,8 +495,6 @@
 	loading={saving}
 />
 
-<CatalogEditAliasForm bind:this={editAliasDialog} {editingServer} {onUpdateConfigure} />
-
 <Confirm
 	msg="Are you sure you want to delete this server?"
 	show={Boolean(deletingInstance)}
@@ -580,29 +521,6 @@
 	oncancel={() => (deletingServer = undefined)}
 />
 
-<PageLoading
-	isProgressBar
-	show={launching}
-	text="Configuring and initializing server..."
-	progress={launchProgress}
-	error={launchError}
-	onClose={() => {
-		launching = false;
-	}}
->
-	{#snippet errorPreContent()}
-		<h4 class="text-xl font-semibold">MCP Server Launch Failed</h4>
-	{/snippet}
-	{#snippet errorPostContent()}
-		<p class="text-md self-start">An issue occurred while launching the MCP server.</p>
-
-		<p class="text-md self-start">
-			Verify that the MCP server is properly configured and try again. If the problem persists,
-			please contact support.
-		</p>
-	{/snippet}
-</PageLoading>
-
 {#snippet serverInfo(item: Entry | Server | ConnectedServer)}
 	{@const manifest = getManifest(item)}
 	{@const serverOrEntry = item
@@ -623,11 +541,7 @@
 				My Connectors
 			</button>
 			<ChevronLeft class="mx-2 size-4" />
-			<span class="text-lg font-light"
-				>{selectedEntryOrServer && 'server' in selectedEntryOrServer
-					? selectedEntryOrServer.server?.alias || manifest?.name
-					: manifest?.name}</span
-			>
+			<span class="text-lg font-light">{manifest?.name}</span>
 		</div>
 
 		<div class="flex items-center gap-2">
@@ -641,9 +555,7 @@
 				<ServerIcon class="bg-surface1 size-10 rounded-md p-1 dark:bg-gray-600" />
 			{/if}
 			<h1 class="text-2xl font-semibold capitalize">
-				{selectedEntryOrServer && 'server' in selectedEntryOrServer
-					? selectedEntryOrServer.server?.alias || manifest?.name
-					: manifest?.name}
+				{manifest?.name}
 			</h1>
 			<div class="flex grow items-center justify-end gap-4">
 				{#if !('server' in item)}
@@ -676,11 +588,8 @@
 						{disablePortal}
 					>
 						<div class="default-dialog flex min-w-48 flex-col p-2">
-							{#if isSingleOrRemote(connectedServer)}
-								{@render editConfigAction(connectedServer)}
-							{/if}
 							{@render additConnectedServerViewActions?.(connectedServer)}
-							{@render disconnectAction(connectedServer)}
+							{@render appendedDefaultActions(connectedServer)}
 						</div>
 					</DotDotDot>
 				{/if}
@@ -693,7 +602,7 @@
 	</div>
 {/snippet}
 
-{#snippet editConfigAction(connectedServer: ConnectedServer)}
+{#snippet appendedDefaultActions(connectedServer: ConnectedServer)}
 	{@const requiresUpdate = requiresUserUpdate(connectedServer)}
 	{@const canConfigure = connectedServer.parent && hasEditableConfiguration(connectedServer.parent)}
 	{#if canConfigure}
@@ -732,24 +641,9 @@
 				configDialog?.open();
 			}}
 		>
-			Edit Configuration
+			Edit
 		</button>
 	{/if}
-{/snippet}
-
-{#snippet renameAction(connectedServer: ConnectedServer)}
-	<button
-		class="menu-button"
-		onclick={() => {
-			editingServer = connectedServer;
-			editAliasDialog?.open();
-		}}
-	>
-		Rename
-	</button>
-{/snippet}
-
-{#snippet disconnectAction(connectedServer: ConnectedServer)}
 	<button
 		class="menu-button text-red-500"
 		onclick={async () => {

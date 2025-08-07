@@ -365,6 +365,18 @@ func (v RemoteValidator) validateRemoteCatalogConfig(config types.RemoteCatalogC
 	return nil
 }
 
+// VirtualValidator implements RuntimeValidator for virtual runtime
+type VirtualValidator struct{}
+
+func (v VirtualValidator) ValidateConfig(manifest types.MCPServerManifest) error {
+
+	return nil
+}
+
+func (v VirtualValidator) ValidateCatalogConfig(manifest types.MCPServerCatalogEntryManifest) error {
+	return nil
+}
+
 // getRuntimeValidators returns a map of all available runtime validators
 func getRuntimeValidators() RuntimeValidators {
 	return RuntimeValidators{
@@ -372,6 +384,7 @@ func getRuntimeValidators() RuntimeValidators {
 		types.RuntimeNPX:           NPXValidator{},
 		types.RuntimeContainerized: ContainerizedValidator{},
 		types.RuntimeRemote:        RemoteValidator{},
+		types.RuntimeVirtual:       VirtualValidator{},
 	}
 }
 
@@ -388,6 +401,11 @@ func ValidateServerManifest(manifest types.MCPServerManifest) error {
 }
 
 func ValidateCatalogEntryManifest(manifest types.MCPServerCatalogEntryManifest) error {
+	// allow projectID to be set for low code virtual mcp servers
+	if manifest.ProjectID != "" {
+		return nil
+	}
+
 	if validator, ok := getRuntimeValidators()[manifest.Runtime]; ok {
 		return validator.ValidateCatalogConfig(manifest)
 	}

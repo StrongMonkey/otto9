@@ -5,11 +5,14 @@
 	import { fly } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import BackLink from '$lib/components/admin/BackLink.svelte';
+	import { initProjectMCPs } from '$lib/context/projectMcps.svelte';
 	const duration = PAGE_TRANSITION_DURATION;
 
 	let { data } = $props();
 	let { catalogEntry: initialCatalogEntry } = data;
 	let catalogEntry = $state(initialCatalogEntry);
+
+	initProjectMCPs(data.mcpServers || []);
 </script>
 
 <Layout>
@@ -21,7 +24,11 @@
 
 		<McpServerEntryForm
 			entry={catalogEntry}
-			type={catalogEntry?.manifest.runtime === 'remote' ? 'remote' : 'single'}
+			type={catalogEntry?.manifest.runtime === 'remote'
+				? 'remote'
+				: catalogEntry?.manifest.projectID
+					? 'virtual'
+					: 'single'}
 			readonly={catalogEntry && 'sourceURL' in catalogEntry && !!catalogEntry.sourceURL}
 			catalogId={DEFAULT_MCP_CATALOG_ID}
 			onCancel={() => {
@@ -30,6 +37,7 @@
 			onSubmit={async () => {
 				goto('/admin/mcp-servers');
 			}}
+			projectId={catalogEntry?.manifest.projectID}
 		/>
 	</div>
 </Layout>

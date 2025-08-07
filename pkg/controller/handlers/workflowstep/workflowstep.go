@@ -223,7 +223,7 @@ func GetStateFromSteps[T kclient.Object](ctx context.Context, client kclient.Cli
 	return "", "", types.WorkflowStateRunning, nil
 }
 
-var replaceRegexp = regexp.MustCompile(`[{},=]+`)
+var replaceRegexp = regexp.MustCompile(`[{},=_]+`)
 
 func NewStep(namespace, workflowExecutionName, afterStepName string, generation int64, step types.Step) *v1.WorkflowStep {
 	if step.ID == "" {

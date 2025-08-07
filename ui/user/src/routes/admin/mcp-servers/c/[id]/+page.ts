@@ -1,6 +1,6 @@
 import { DEFAULT_MCP_CATALOG_ID } from '$lib/constants';
 import { handleRouteError } from '$lib/errors';
-import { AdminService } from '$lib/services';
+import { AdminService, ChatService } from '$lib/services';
 import { profile } from '$lib/stores';
 import type { PageLoad } from './$types';
 
@@ -14,7 +14,14 @@ export const load: PageLoad = async ({ params, fetch }) => {
 		handleRouteError(err, `/admin/mcp-servers/c/${id}`, profile.current);
 	}
 
+	let mcpServers;
+	if (catalogEntry?.manifest.projectID) {
+		const project = await ChatService.getProject(catalogEntry.manifest.projectID, { fetch });
+		mcpServers = await ChatService.listProjectMCPs(project.assistantID, project.id, { fetch });
+	}
+
 	return {
-		catalogEntry
+		catalogEntry,
+		mcpServers
 	};
 };

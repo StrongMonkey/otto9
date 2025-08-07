@@ -49,6 +49,8 @@ var staticRules = map[string][]string{
 		"GET /api/app-oauth/get-token",
 
 		"POST /api/sendgrid",
+		"GET /virtual/mcp/{project_id}",
+		"POST /virtual/mcp/{project_id}",
 
 		"GET /api/healthz",
 

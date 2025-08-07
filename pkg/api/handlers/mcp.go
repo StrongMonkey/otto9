@@ -1748,7 +1748,7 @@ func (m *MCPHandler) TriggerUpdate(req api.Context) error {
 	server.Spec.Manifest.ContainerizedConfig = entry.Spec.Manifest.ContainerizedConfig
 
 	// Handle remote runtime URL updates
-	if entry.Spec.Manifest.Runtime == types.RuntimeRemote && entry.Spec.Manifest.RemoteConfig != nil {
+	if (entry.Spec.Manifest.Runtime == types.RuntimeRemote || entry.Spec.Manifest.Runtime == types.RuntimeVirtual) && entry.Spec.Manifest.RemoteConfig != nil {
 		if entry.Spec.Manifest.RemoteConfig.FixedURL != "" {
 			// Use the fixed URL from catalog entry
 			server.Spec.Manifest.RemoteConfig = &types.RemoteRuntimeConfig{

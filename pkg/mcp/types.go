@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 
 	nmcp "github.com/nanobot-ai/nanobot/pkg/mcp"
@@ -9,6 +10,7 @@ import (
 	"github.com/obot-platform/obot/pkg/api/authz"
 	"github.com/obot-platform/obot/pkg/jwt"
 	v1 "github.com/obot-platform/obot/pkg/storage/apis/obot.obot.ai/v1"
+	"github.com/obot-platform/obot/pkg/virtualsecret"
 )
 
 type GlobalTokenStore interface {
@@ -181,6 +183,19 @@ func ServerToServerConfig(mcpServer v1.MCPServer, scope string, credEnv map[stri
 		} else {
 			return serverConfig, missingRequiredNames, fmt.Errorf("runtime %s requires remote config", mcpServer.Spec.Manifest.Runtime)
 		}
+	case types.RuntimeVirtual:
+		// the virtual runtime is a special case where the MCP server is running in the same process as the MCP client
+		// it should be treated as a remote runtime
+		u, err := url.Parse(mcpServer.Spec.Manifest.RemoteConfig.URL)
+		if err != nil {
+			return serverConfig, missingRequiredNames, fmt.Errorf("failed to parse remote config URL: %w", err)
+		}
+		u.Host = "localhost:8090"
+		u.Scheme = "http"
+
+		serverConfig.URL = u.String()
+		serverConfig.Runtime = types.RuntimeRemote
+		serverConfig.Headers = []string{fmt.Sprintf("x-virtual-mcp-secret=%s", virtualsecret.GetVirtualMCPSecret())}
 	default:
 		return serverConfig, missingRequiredNames, fmt.Errorf("unknown runtime %s", mcpServer.Spec.Manifest.Runtime)
 	}

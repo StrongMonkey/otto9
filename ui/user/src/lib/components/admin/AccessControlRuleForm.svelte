@@ -82,6 +82,8 @@
 			);
 
 			if (!existingResourceIds.has(initialAdditionId)) {
+				console.log('initialAdditionId', initialAdditionId);
+				console.log('mcpEntriesMap', mcpEntriesMap);
 				const entry = mcpEntriesMap.get(initialAdditionId);
 				if (entry) {
 					accessControlRule.resources = [
