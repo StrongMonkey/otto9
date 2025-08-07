@@ -1,0 +1,95 @@
+name: MCP POC Build and Push
+
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+  actions: read
+  security-events: write
+
+on:
+  workflow_dispatch: # Allow manual trigger
+  push:
+    branches:
+      - mcp-poc
+    paths-ignore:
+      - docs/**
+      - chart/**
+      - .github/workflows/**
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        id: build-and-push
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/${{ github.repository }}:mcp-poc
+            ghcr.io/${{ github.repository }}:mcp-poc-${{ github.sha }}
+          build-args: |
+            BASE_IMAGE=ghcr.io/obot-platform/obot/base:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.8.1
+        with:
+          cosign-release: "v2.4.3"
+
+      - name: Sign Images
+        env:
+          DIGEST: ${{ steps.build-and-push.outputs.digest }}
+          TAGS: ghcr.io/${{ github.repository }}:mcp-poc ghcr.io/${{ github.repository }}:mcp-poc-${{ github.sha }}
+        run: |
+          images=""
+          for tag in ${TAGS}; do
+            images+="${tag}@${DIGEST} "
+          done
+          cosign sign --yes ${images}
+
+  image-scan:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/${{ github.repository }}:mcp-poc
+          skip-dirs: "**/venv"
+          format: "sarif"
+          output: "trivy-results.sarif"
+
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif

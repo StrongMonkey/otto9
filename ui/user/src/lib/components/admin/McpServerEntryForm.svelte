@@ -299,6 +299,7 @@
 			{onSubmit}
 			{projectId}
 			hideTitle={Boolean(entry)}
+			showTools={entry ? false : true}
 		>
 			{#snippet readonlyMessage()}
 				{#if entry && 'sourceURL' in entry && !!entry.sourceURL}

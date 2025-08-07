@@ -28,6 +28,7 @@
 		hideTitle?: boolean;
 		readonlyMessage?: Snippet;
 		projectId?: string;
+		showTools?: boolean;
 	}
 
 	function getType(entry?: MCPCatalogEntry | MCPCatalogServer) {
@@ -56,7 +57,8 @@
 		onSubmit,
 		hideTitle,
 		readonlyMessage,
-		projectId
+		projectId,
+		showTools
 	}: Props = $props();
 	let type = $derived(getType(entry) ?? newType);
 
@@ -645,7 +647,7 @@
 	{/if}
 {:else}
 	<!-- Virtual Server Configuration -->
-	<VirtualServerConfiguration bind:this={virtualServerConfig} {projectId} showTools={true} />
+	<VirtualServerConfiguration bind:this={virtualServerConfig} {projectId} {showTools} />
 {/if}
 
 <!-- Environment Variables Section -->
